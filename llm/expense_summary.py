@@ -1,7 +1,7 @@
+import os
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from openai import OpenAI
 
 
 def _build_prompt(structured_data: Dict[str, Any], anomalies: List[Dict[str, Any]]) -> str:
@@ -41,35 +41,39 @@ def _build_prompt(structured_data: Dict[str, Any], anomalies: List[Dict[str, Any
     return "\n".join(lines)
 
 
+def _fallback_summary(structured_data: Dict[str, Any], anomalies: List[Dict[str, Any]]) -> str:
+    vendor = structured_data.get("vendor", "Unknown vendor")
+    total = structured_data.get("total", "N/A")
+    currency = structured_data.get("currency", "")
+    base = f"Invoice/expense from {vendor} with total {total} {currency}."
+    if anomalies:
+        base += " Potential issues were detected; please review the anomaly list."
+    return base
+
+
 def generate_expense_summary(
     structured_data: Dict[str, Any],
     anomalies: Optional[List[Dict[str, Any]]] = None,
-    model: str = "gpt-4o-mini",
+    model: Optional[str] = None,
 ) -> str:
     anomalies = anomalies or []
+    model = model or os.getenv("OLLAMA_MODEL", "llama3.2")
     prompt = _build_prompt(structured_data, anomalies)
 
     try:
-        client = OpenAI()
-        response = client.chat.completions.create(
+        from ollama import chat
+
+        response = chat(
             model=model,
             messages=[
                 {"role": "system", "content": "You are a helpful financial analyst assistant."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.2,
-            max_tokens=300,
         )
-        return response.choices[0].message.content.strip() or ""
-    except Exception as exc:  # noqa: BLE001
-        logger.error(f"Failed to generate expense summary via LLM: {exc}")
-        vendor = structured_data.get("vendor", "Unknown vendor")
-        total = structured_data.get("total", "N/A")
-        currency = structured_data.get("currency", "")
-        base = f"Invoice/expense from {vendor} with total {total} {currency}."
-        if anomalies:
-            base += " Potential issues were detected; please review the anomaly list."
-        return base
+        return (response.message.content or "").strip() or _fallback_summary(structured_data, anomalies)
+    except Exception as exc:
+        logger.error(f"Failed to generate expense summary via Ollama: {exc}")
+        return _fallback_summary(structured_data, anomalies)
 
 
 __all__ = ["generate_expense_summary"]

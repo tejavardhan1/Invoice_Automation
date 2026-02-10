@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Automation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.5;
+      padding: 2rem;
+    }
+    .container { max-width: 680px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #111; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+    section {
+      background: white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    section h2 {
+      font-size: 0.85rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    .upload-box {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      background: #fafafa;
+    }
+    .upload-box:hover { border-color: #0066cc; background: #f0f7ff; }
+    .upload-box input { display: none; }
+    .upload-box p { margin-bottom: 0.5rem; }
+    .upload-box .hint { font-size: 0.85rem; color: #888; }
+    .btn {
+      display: inline-block;
+      padding: 0.6rem 1.25rem;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+    .btn:hover { background: #0052a3; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .loading { padding: 1.5rem; text-align: center; color: #666; }
+    .loading::before {
+      content: '';
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 2px solid #ddd; border-top-color: #0066cc;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      vertical-align: middle; margin-right: 0.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { padding: 1rem; background: #fee; color: #c00; border-radius: 6px; margin-bottom: 1rem; }
+    .results { display: none; }
+    .results.visible { display: block; }
+    .field-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #eee;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-label { color: #666; font-size: 0.9rem; }
+    .field-value { font-weight: 500; }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .badge-invoice { background: #e6f7ed; color: #0a6; }
+    .badge-receipt { background: #e6f0ff; color: #06c; }
+    .badge-other { background: #f0f0f0; color: #666; }
+    .confidence { font-size: 0.85rem; color: #888; margin-top: 0.35rem; }
+    .line-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .line-items-table th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      background: #f8f9fa;
+      color: #666;
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+    }
+    .line-items-table td {
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #eee;
+    }
+    .line-items-table tr:last-child td { border-bottom: none; }
+    .line-items-empty { color: #888; font-size: 0.9rem; padding: 0.5rem 0; }
+    .anomalies-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+    .anomaly-count {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+    .anomaly-count.none { background: #e6f7ed; color: #0a6; }
+    .anomaly-count.some { background: #fff3e0; color: #e65100; }
+    .anomaly-count.high { background: #ffebee; color: #c00; }
+    .anomaly-list { margin-top: 0.5rem; }
+    .anomaly-item {
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 0.5rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .anomaly-item.high { background: #ffebee; border-left: 4px solid #c00; }
+    .anomaly-item.medium { background: #fff3e0; border-left: 4px solid #e65100; }
+    .anomaly-item.low { background: #fffde7; border-left: 4px solid #f9a825; }
+    .anomaly-severity {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .anomaly-msg { flex: 1; }
+    .no-anomalies { color: #0a6; padding: 0.75rem 0; font-size: 0.95rem; }
+    .summary-text { padding: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Invoice Automation</h1>
+    <p class="subtitle">Upload a PDF or image to extract data, detect anomalies, and get an AI summary</p>
+
+    <section>
+      <h2>1. Upload Document</h2>
+      <div class="upload-box" id="dropZone">
+        <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp">
+        <p>Click or drag a file here</p>
+        <p class="hint">PDF, PNG, JPG, GIF, WebP</p>
+        <button type="button" class="btn" id="analyzeBtn" disabled>Analyze</button>
+      </div>
+    </section>
+
+    <div class="loading" id="loading" style="display: none;">Processing...</div>
+    <div class="error" id="error" style="display: none;"></div>
+
+    <div class="results" id="results">
+      <section>
+        <h2>2. Document Type</h2>
+        <p><span class="badge badge-invoice" id="docType">—</span></p>
+        <p class="confidence" id="confidence"></p>
+      </section>
+      <section>
+        <h2>3. Extracted Fields</h2>
+        <div id="fieldsGrid"></div>
+      </section>
+      <section>
+        <h2>4. Line Items</h2>
+        <div id="lineItemsBlock"></div>
+      </section>
+      <section>
+        <h2>5. Anomaly Analysis</h2>
+        <div class="anomalies-header">
+          <span>Issues detected</span>
+          <span class="anomaly-count none" id="anomalyCount">0</span>
+        </div>
+        <div class="anomaly-list" id="anomaliesList"></div>
+        <div class="no-anomalies" id="noAnomalies" style="display: none;">No issues found. Invoice looks consistent.</div>
+      </section>
+      <section>
+        <h2>6. AI Summary</h2>
+        <div class="summary-text" id="summary">—</div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    var dropZone = document.getElementById('dropZone');
+    var fileInput = document.getElementById('fileInput');
+    var analyzeBtn = document.getElementById('analyzeBtn');
+    var loading = document.getElementById('loading');
+    var error = document.getElementById('error');
+    var results = document.getElementById('results');
+
+    var selectedFile = null;
+
+    dropZone.addEventListener('click', function(e) {
+      if (e.target !== analyzeBtn) fileInput.click();
+    });
+    fileInput.addEventListener('change', function(e) {
+      selectedFile = e.target.files[0];
+      analyzeBtn.disabled = !selectedFile;
+    });
+
+    dropZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      dropZone.style.borderColor = '#0066cc';
+    });
+    dropZone.addEventListener('dragleave', function() {
+      dropZone.style.borderColor = '#ccc';
+    });
+    dropZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropZone.style.borderColor = '#ccc';
+      var f = e.dataTransfer.files[0];
+      if (f && /\.(pdf|png|jpe?g|gif|webp)$/i.test(f.name)) {
+        selectedFile = f;
+        fileInput.files = e.dataTransfer.files;
+        analyzeBtn.disabled = false;
+      }
+    });
+
+    function renderResults(data) {
+      var f = data.fields || {};
+      var typeBadge = document.getElementById('docType');
+      var docType = (data.document_type || '').replace(/_/g, ' ');
+      typeBadge.textContent = docType;
+      typeBadge.className = 'badge badge-' + (data.document_type === 'invoice' ? 'invoice' : data.document_type === 'expense_receipt' ? 'receipt' : 'other');
+
+      var conf = data.classification_confidence;
+      document.getElementById('confidence').textContent = conf != null ? 'Confidence: ' + Math.round(conf * 100) + '%' : '';
+
+      var grid = document.getElementById('fieldsGrid');
+      var rows = [
+        ['Vendor', f.vendor],
+        ['Invoice #', f.invoice_number],
+        ['Date', f.date],
+        ['Currency', f.currency],
+        ['Subtotal', f.subtotal != null ? (f.currency || '') + ' ' + f.subtotal : null],
+        ['Tax', f.tax != null ? (f.currency || '') + ' ' + f.tax : null],
+        ['Total', f.total != null ? (f.currency || '') + ' ' + f.total : null]
+      ];
+      grid.innerHTML = '';
+      rows.forEach(function(item) {
+        if (item[1] != null && item[1] !== '') {
+          grid.innerHTML += '<div class="field-row"><span class="field-label">' + item[0] + '</span><span class="field-value">' + item[1] + '</span></div>';
+        }
+      });
+
+      var lineItemsBlock = document.getElementById('lineItemsBlock');
+      var items = f.line_items || [];
+      if (items.length) {
+        var table = '<table class="line-items-table"><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>';
+        items.forEach(function(li) {
+          table += '<tr><td>' + (li.description || '') + '</td><td>' + (f.currency || '') + ' ' + li.amount + '</td></tr>';
+        });
+        table += '</tbody></table>';
+        lineItemsBlock.innerHTML = table;
+      } else {
+        lineItemsBlock.innerHTML = '<p class="line-items-empty">No line items extracted.</p>';
+      }
+
+      var anomalies = data.anomalies || [];
+      var anomaliesList = document.getElementById('anomaliesList');
+      var noAnomalies = document.getElementById('noAnomalies');
+      var anomalyCount = document.getElementById('anomalyCount');
+
+      if (anomalies.length) {
+        noAnomalies.style.display = 'none';
+        anomaliesList.style.display = 'block';
+        anomaliesList.innerHTML = anomalies.map(function(a) {
+          var sev = (a.severity || 'medium').toLowerCase();
+          return '<div class="anomaly-item ' + sev + '"><span class="anomaly-severity">' + sev + '</span><span class="anomaly-msg">' + a.message + '</span></div>';
+        }).join('');
+
+        var highCount = anomalies.filter(function(a) { return (a.severity || '').toLowerCase() === 'high'; }).length;
+        anomalyCount.textContent = anomalies.length + ' (' + highCount + ' high)';
+        anomalyCount.className = 'anomaly-count ' + (highCount > 0 ? 'high' : 'some');
+      } else {
+        anomaliesList.style.display = 'none';
+        anomaliesList.innerHTML = '';
+        noAnomalies.style.display = 'block';
+        anomalyCount.textContent = '0';
+        anomalyCount.className = 'anomaly-count none';
+      }
+
+      document.getElementById('summary').textContent = data.summary || 'No summary available.';
+      results.classList.add('visible');
+    }
+
+    analyzeBtn.addEventListener('click', function() {
+      if (!selectedFile) return;
+      loading.style.display = 'block';
+      error.style.display = 'none';
+      results.classList.remove('visible');
+
+      var form = new FormData();
+      form.append('file', selectedFile);
+
+      fetch('/api/analyze', { method: 'POST', body: form })
+        .then(function(res) {
+          return res.json().then(function(data) {
+            if (!res.ok) throw new Error(data.detail || 'Failed');
+            return data;
+          });
+        })
+        .then(function(data) {
+          loading.style.display = 'none';
+          renderResults(data);
+        })
+        .catch(function(err) {
+          loading.style.display = 'none';
+          error.textContent = err.message || 'Something went wrong.';
+          error.style.display = 'block';
+        });
+    });
+  </script>
+</body>
+</html>

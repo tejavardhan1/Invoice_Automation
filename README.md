@@ -1,193 +1,143 @@
-## AI-Powered Invoice & Expense Automation System
+# AI-Powered Invoice & Expense Automation System
 
-Built an AI system that automates invoice and expense processing by extracting financial data, detecting anomalies, and generating summaries via APIs.
+Automates invoice and expense processing by extracting financial data, classifying documents, detecting anomalies, and generating business summaries via REST APIs.
 
-### Overview
+## Problem Statement
 
-Companies receive large volumes of:
-- Vendor invoices
-- Employee expense receipts
-- PDF / image-based bills
+Companies receive large volumes of vendor invoices and employee expense receipts as PDFs/images. Manual processing is slow, error-prone, and doesn't scale. This system automates the end-to-end workflow: OCR → extraction → classification → anomaly detection → LLM summary.
 
-Manual processing is slow and error-prone. This project automates the core workflow end-to-end:
+## Architecture
 
-- **Input**: PDF/image uploads via REST API
-- **Processing**:
-  - OCR to extract raw text
-  - ML-based document classification
-  - Rule + ML checks to detect duplicates, missing fields, and amount mismatches
-- **AI Layer**:
-  - LLM-generated expense summaries
-  - Flags unusual charges
-- **Output**: Clean JSON responses ready for ERP/accounting tools
-
-### Repository Structure
-
-```text
-ai-invoice-expense-automation/
-│── data/
-│── ocr/
-│   └── extract_text.py
-│
-│── preprocessing/
-│   └── field_extraction.py
-│
-│── models/
-│   ├── doc_classifier.py
-│   ├── anomaly_detection.py
-│
-│── llm/
-│   └── expense_summary.py
-│
-│── api/
-│   └── main.py
-│
-│── mlops/
-│   └── mlflow_tracking.py
-│
-│── docker/
-│   ├── Dockerfile
+```mermaid
+flowchart LR
+    A[Upload PDF/Image] --> B[OCR]
+    B --> C[Field Extraction]
+    C --> D[Document Classifier]
+    C --> E[Anomaly Detection]
+    D --> F[JSON Response]
+    E --> F
+    F --> G[LLM Summary]
 ```
 
-> Note: The top-level folder here is your current project folder (`Invoice Automation`). You can rename it to `ai-invoice-expense-automation` if you wish.
+| Stage | Component | Output |
+|-------|-----------|--------|
+| 1 | OCR (Tesseract) | Raw text |
+| 2 | Field extraction (regex) | invoice_number, date, total, vendor, tax |
+| 3 | Document classifier (ML) | invoice / receipt / other |
+| 4 | Anomaly detection | duplicates, missing fields, total mismatch |
+| 5 | LLM (Ollama) | Business summary |
 
-### Tech Stack
-
-- **Language**: Python
-- **API**: FastAPI
-- **OCR**: Tesseract (via `pytesseract`) and `pdf2image` for PDFs
-- **ML**: Scikit-learn (e.g. Random Forest / XGBoost-style classifiers and anomaly detection)
-- **LLM**: OpenAI / compatible chat completion API
-- **MLOps**: MLflow
-- **Containerization**: Docker
-
-### Features
-
-- **Document ingestion API**
-  - Upload invoices/receipts as PDF or image
-  - Simple REST interface for integration with other tools
-
-- **OCR & text extraction**
-  - Uses Tesseract to extract raw text from supported image formats
-  - Uses `pdf2image` to rasterize PDFs before OCR (configurable)
-
-- **Field extraction**
-  - Heuristic parsing of key financial fields:
-    - Vendor name
-    - Invoice/receipt date
-    - Subtotal / tax / total amounts
-    - Currency when possible
-
-- **Document classification**
-  - Classifies documents into types like:
-    - `invoice`
-    - `expense_receipt`
-    - `other`
-  - Uses a simple ML-ready interface (Scikit-learn), easily extendable to Random Forest / XGBoost with real training data.
-
-- **Anomaly detection**
-  - Flags potential issues such as:
-    - Missing critical fields
-    - Total vs line-item sum mismatches
-    - Possible duplicates (by hashing key fields)
-
-- **LLM summarization**
-  - Generates natural-language expense summaries from structured JSON
-  - Highlights unusual or high-risk charges
-
-### Getting Started
-
-#### 1. Create and activate a virtual environment
-
-```bash
-cd "Invoice Automation"
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-#### 2. Install dependencies
+## Quick Start
 
 ```bash
 pip install -r requirements.txt
-```
+brew install tesseract poppler   # macOS
 
-You also need Tesseract OCR installed on your system:
+# Ollama must be running (open the app, or run `ollama serve` in another terminal)
+ollama pull llama3.2
 
-- **macOS (Homebrew)**:
-
-```bash
-brew install tesseract poppler
-```
-
-#### 3. Environment variables
-
-Create a `.env` file (or export environment variables) with your LLM provider key:
-
-```bash
-OPENAI_API_KEY=your_api_key_here
-```
-
-#### 4. Run the FastAPI app
-
-```bash
+# Start API. Use --port 8001 if 8000 is already in use
 uvicorn api.main:app --reload
 ```
 
-Then open `http://localhost:8000/docs` to try the API.
+Open http://localhost:8000 (or :8001)
 
-### API Endpoints
+## API Endpoints
 
-- **POST** `/process-invoice`
-  - **Description**: Upload a PDF/image invoice or receipt and receive extracted fields, classification, anomalies, and AI-generated summary.
-  - **Request**: `multipart/form-data` with file field `file`
-  - **Response**: JSON:
-    - `document_type`
-    - `fields` (structured financial data)
-    - `anomalies`
-    - `summary`
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/api/upload` | Upload file, get path/size |
+| POST | `/api/extract` | Extract fields only |
+| POST | `/api/summary` | Generate LLM summary |
+| POST | `/api/analyze` | Full pipeline (extract + classify + anomalies + summary) |
+| POST | `/process-invoice` | Legacy; same as `/api/analyze` |
 
-### High-Level Flow
+## Sample JSON Output
 
-1. **Upload** file via `/process-invoice` (FastAPI).
-2. **OCR** extracts raw text (`ocr/extract_text.py`).
-3. **Field extraction** parses key financial data (`preprocessing/field_extraction.py`).
-4. **Classification** labels doc type (`models/doc_classifier.py`).
-5. **Anomaly detection** runs rule/ML-based checks (`models/anomaly_detection.py`).
-6. **LLM** generates a summary (`llm/expense_summary.py`).
-7. **JSON response** is returned, ready to be consumed by ERP/accounting systems.
+```json
+{
+  "document_type": "invoice",
+  "classification_confidence": 0.7,
+  "fields": {
+    "vendor": "Acme Corp",
+    "invoice_number": "INV-2025-001",
+    "date": "2025-02-03",
+    "currency": "USD",
+    "subtotal": 1000.0,
+    "tax": 100.0,
+    "total": 1100.0,
+    "line_items": [
+      {"description": "Service A", "amount": 500.0},
+      {"description": "Service B", "amount": 500.0}
+    ]
+  },
+  "anomalies": [],
+  "summary": "This invoice from Acme Corp for $1,100 on 2025-02-03 includes 10% tax. No discrepancies found."
+}
+```
 
-### MLOps (MLflow)
+## Usage Examples
 
-The `mlops/mlflow_tracking.py` module provides helper utilities to:
+**Extract fields:**
+```bash
+curl -X POST "http://localhost:8000/api/extract" -F "file=@invoice.pdf"
+```
 
-- Set up an MLflow tracking URI
-- Log parameters, metrics, and artifacts for:
-  - Document classifier experiments
-  - Anomaly detection models
-  - OCR and end-to-end latency/quality measurements
+**Full analysis:**
+```bash
+curl -X POST "http://localhost:8000/api/analyze" -F "file=@invoice.pdf"
+```
 
-You can extend these utilities when you start training real models on your own dataset.
+## Docker
 
-### Docker
+```bash
+docker-compose -f docker/docker-compose.yml up --build
+```
 
-A sample `Dockerfile` is provided under `docker/` to:
+Or build manually:
+```bash
+docker build -f docker/Dockerfile -t invoice-automation .
+docker run -p 8000:8000 -e OPENAI_API_KEY=xxx invoice-automation
+```
 
-- Build a container image with all dependencies
-- Run the FastAPI app with Uvicorn in production-friendly settings
+## Repo Structure
 
-### Resume Entry (Copy-Paste Ready)
+```
+Invoice_Automation/
+├── data/
+│   ├── uploads/
+│   └── sample_invoices/
+├── api/
+│   └── main.py           # FastAPI app
+├── ocr/
+│   ├── extract_text.py
+│   └── extract_text_service.py
+├── preprocessing/
+│   └── field_extraction.py
+├── models/
+│   ├── doc_classifier.py
+│   └── anomaly_detection.py
+├── llm/
+│   └── expense_summary.py
+├── mlops/
+│   └── mlflow_tracking.py
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── tests/
+└── requirements.txt
+```
 
-**AI Invoice & Expense Automation System | Python, OCR, ML, FastAPI, MLflow**
+## Tech Stack
 
-- Developed an AI system to automate invoice and expense processing by extracting structured financial data from PDFs and images.
-- Implemented ML-based document classification and anomaly detection to identify duplicates, missing fields, and inconsistent amounts.
-- Integrated LLMs to generate expense summaries and highlight unusual charges for business users.
-- Exposed functionality through REST APIs and containerized the application using Docker for scalable deployment.
+- **Python** · **FastAPI** · **Tesseract OCR** · **scikit-learn** · **Ollama** · **MLflow** · **Docker**
 
-### Next Steps / Extensions
+## Resume Bullet
 
-- Replace heuristic classification with a trained Random Forest/XGBoost model.
-- Collect real invoice/receipt data to improve field extraction and anomaly rules.
-- Add authentication and role-based access control around the API.
-- Integrate with an ERP/accounting sandbox (e.g. Odoo, QuickBooks sandbox, or custom ledger).
+**AI Invoice & Expense Automation System | Python, OCR, FastAPI, ML, MLflow, Docker**
 
+- Built an AI system to automate invoice processing by extracting structured financial data from PDFs/images
+- Developed ML-based document classification and anomaly detection (duplicates, missing fields, total mismatch)
+- Integrated LLMs for business-ready summaries
+- Exposed REST APIs (`/api/upload`, `/api/extract`, `/api/summary`, `/api/analyze`) and containerized with Docker
